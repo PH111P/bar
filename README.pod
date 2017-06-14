@@ -6,7 +6,7 @@ lemonbar - Featherweight lemon-scented bar
 
 =head1 SYNOPSIS
 
-I<lemonbar> [-h | -g I<width>B<x>I<height>B<+>I<x>B<+>I<y> | -b | -d | -f I<font> | -p | -n I<name> | -u I<pixel> | -B I<color> | -F I<color> | -U I<color> | -o I<offset> ]
+I<lemonbar> [-h | -O | -g I<width>B<x>I<height>B<+>I<x>B<+>I<y> | -b | -d | -f I<font> | -p | -n I<name> | -u I<pixel> | -B I<color> | -F I<color> | -U I<color> | -o I<offset> ]
 
 =head1 DESCRIPTION
 
@@ -24,9 +24,9 @@ Display the help and exit.
 
 Set the window geometry. If a parameter is omitted it's filled with the default value. If the I<y> parameter is specified along with the B<-b> switch then the position is relative to the bottom of the screen.
 
-=item B<-o> I<name>
+=item B<-O> I<name>
 
-Set next output to I<name>. May be used multiple times; order is significant. If any B<-o> options are given, only B<-o> specified monitors will be used. Invalid output names are silently ignored. (only supported on randr configurations at this time)
+Set next output to I<name>. May be used multiple times; order is significant. If any B<-O> options are given, only B<-O> specified monitors will be used. Invalid output names are silently ignored. (only supported on randr configurations at this time)
 
 =item B<-b>
 
