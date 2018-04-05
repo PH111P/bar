@@ -43,7 +43,8 @@ changing the MAX_FONT_COUNT parameter in the source code). This version supports
 
 =item B<-a> I<number>
 
-Set number of clickable areas (default is 10)
+Set initial number of clickable areas (default is 10).
+Whenever the number of clickable areas is used up, the amount of clickable areas doubles.
 
 =item B<-p>
 
