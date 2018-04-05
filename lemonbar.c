@@ -90,7 +90,7 @@ enum {
     GC_MAX
 };
 
-#define MAX_FONT_COUNT 5
+#define MAX_FONT_COUNT 10
 
 static Display *dpy;
 static xcb_connection_t *c;
@@ -150,6 +150,9 @@ update_gc (void)
     void
 fill_gradient (xcb_drawable_t d, int x, int y, int width, int height, rgba_t start, rgba_t stop)
 {
+    (void) y;
+    (void) height;
+
     float i;
     const int K = 25; // The number of steps
 
@@ -377,6 +380,8 @@ parse_color (const char *str, char **end, const rgba_t def)
             tmp.v = (tmp.v & 0xf00) * 0x1100
                 | (tmp.v & 0x0f0) * 0x0110
                 | (tmp.v & 0x00f) * 0x0011;
+            tmp.a = 255;
+            break;
         case 6:
             // If the code is in #rrggbb form then assume it's opaque
             tmp.a = 255;
@@ -501,9 +506,17 @@ area_add (char *str, const char *optend, char **end, monitor_t *mon, const int x
     }
 
     if (area_stack.at + 1 > area_stack.max) {
-        fprintf(stderr, "Cannot add any more clickable areas (used %d/%d)\n",
-                area_stack.at, area_stack.max);
-        return false;
+        // We need more clickable areas
+        void* new_pos = area_stack.max ?
+            (realloc(area_stack.area, 2 * area_stack.max * sizeof(area_t))) : 0;
+
+        if (!new_pos) {
+            fprintf(stderr, "Cannot add any more clickable areas (used %d/%d)\n",
+                    area_stack.at, area_stack.max);
+            return false;
+        }
+        area_stack.area = new_pos;
+        area_stack.max = 2 * area_stack.max;
     }
     a = &area_stack.area[area_stack.at++];
 
@@ -1565,7 +1578,7 @@ main (int argc, char **argv)
                         "\t-b Put the bar at the bottom of the screen\n"
                         "\t-d Force docking (use this if your WM isn't EWMH compliant)\n"
                         "\t-f Set the font name to use\n"
-                        "\t-a Number of clickable areas available (default is 10)\n"
+                        "\t-a Initial number of clickable areas available (default is 10)\n"
                         "\t-p Don't close after the data ends\n"
                         "\t-n Set the WM_NAME atom to the specified value for this bar\n"
                         "\t-u Set the underline/overline height in pixels\n"
