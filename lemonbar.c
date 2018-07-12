@@ -1568,15 +1568,16 @@ main (int argc, char **argv)
     // Connect to the Xserver and initialize scr
     xconn();
 
-    while ((ch = getopt(argc, argv, "hg:O:bdf:a:pu:B:F:U:n:o:")) != -1) {
+    while ((ch = getopt(argc, argv, "hg:O:btdf:a:pu:B:F:U:n:o:")) != -1) {
         switch (ch) {
             case 'h':
                 printf ("lemonbar version %s patched with XFT support and other fancy stuff.\n", VERSION);
-                printf ("usage: %s [-h | -g | -O | -b | -d | -f | -a | -p | -n | -u | -B | -F]\n"
+                printf ("usage: %s [-h | -g | -O | -b | -t | -d | -f | -a | -p | -n | -u | -B | -F | -U | -o]\n"
                         "\t-h Show this help\n"
                         "\t-g Set the bar geometry {width}x{height}+{xoffset}+{yoffset}\n"
                         "\t-O Add randr output by name\n"
                         "\t-b Put the bar at the bottom of the screen\n"
+                        "\t-t Put the bar at the top of the screen\n"
                         "\t-d Force docking (use this if your WM isn't EWMH compliant)\n"
                         "\t-f Set the font name to use\n"
                         "\t-a Initial number of clickable areas available (default is 10)\n"
@@ -1585,6 +1586,7 @@ main (int argc, char **argv)
                         "\t-u Set the underline/overline height in pixels\n"
                         "\t-B Set background color in #AARRGGBB\n"
                         "\t-F Set foreground color in #AARRGGBB\n"
+                        "\t-U Set underline color in #AARRGGBB\n"
                         "\t-o Add a vertical offset to the text, it can be negative\n", argv[0]);
                 exit (EXIT_SUCCESS);
             case 'g': (void)parse_geometry_string(optarg, geom_v); break;
@@ -1592,6 +1594,7 @@ main (int argc, char **argv)
             case 'p': permanent = true; break;
             case 'n': wm_name = strdup(optarg); break;
             case 'b': topbar = false; break;
+            case 't': topbar = true; break;
             case 'd': dock = true; break;
             case 'f': font_load(optarg); break;
             case 'u': bu = strtoul(optarg, NULL, 10); break;
@@ -1635,7 +1638,7 @@ main (int argc, char **argv)
 
     // Prevent fgets to block
     fcntl(STDIN_FILENO, F_SETFL, O_NONBLOCK);
-	
+
     for (;;) {
         bool redraw = false;
 
