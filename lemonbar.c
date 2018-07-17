@@ -55,6 +55,7 @@ typedef struct area_t {
     bool active:1;
     int align:3;
     unsigned int button:3;
+    bool hovered:1;
     xcb_window_t window;
     char *cmd;
 } area_t;
@@ -438,12 +439,33 @@ set_attribute (const char modifier, const char attribute)
 area_get (xcb_window_t win, const int btn, const int x)
 {
     // Looping backwards ensures that we get the innermost area first
+    area_t* res = NULL;
     for (int i = area_stack.at - 1; i >= 0; i--) {
         area_t *a = &area_stack.area[i];
-        if (a->window == win && a->button == btn && x >= a->begin && x < a->end)
-            return a;
+
+        if (a->window != win || x < a->begin || x > a->end || btn == 7) {
+            if (a->hovered && a->button == 7) {
+                a->hovered = false;
+                if (!res)
+                    res = a;
+            }
+            a->hovered = false;
+        }
     }
-    return NULL;
+    for (int i = area_stack.at - 1; i >= 0; i--) {
+        area_t *a = &area_stack.area[i];
+
+        if (a->window == win && x >= a->begin && x < a->end) {
+            if (a->button == btn && (a->button != 6 || !a->hovered)) {
+                if (!res) {
+                    a->hovered = true;
+                    res = a;
+                }
+            } else if (btn != 7)
+                a->hovered = true;
+        }
+    }
+    return res;
 }
 
     void
@@ -503,6 +525,7 @@ area_add (char *str, const char *optend, char **end, monitor_t *mon, const int x
         }
 
         a->active = false;
+        a->hovered = false;
         return true;
     }
 
@@ -650,8 +673,8 @@ parse (char *text)
 
                     case 'A':
                               button = XCB_BUTTON_INDEX_1;
-                              // The range is 1-5
-                              if (isdigit(*p) && (*p > '0' && *p < '6'))
+                              // The range is 1-7
+                              if (isdigit(*p) && (*p > '0' && *p < '8'))
                                   button = *p++ - '0';
                               if (!area_add(p, block_end, &p, cur_mon, pos_x, align, button))
                                   return;
@@ -953,7 +976,7 @@ monitor_new (int x, int y, int width, int height, char *name)
             XCB_WINDOW_CLASS_INPUT_OUTPUT, visual,
             XCB_CW_BACK_PIXEL | XCB_CW_BORDER_PIXEL | XCB_CW_OVERRIDE_REDIRECT | XCB_CW_EVENT_MASK | XCB_CW_COLORMAP,
             (const uint32_t []) {
-            bgc.v, bgc.v, dock, XCB_EVENT_MASK_EXPOSURE | XCB_EVENT_MASK_BUTTON_PRESS, colormap
+            bgc.v, bgc.v, dock, XCB_EVENT_MASK_EXPOSURE | XCB_EVENT_MASK_BUTTON_PRESS | XCB_EVENT_MASK_ENTER_WINDOW | XCB_EVENT_MASK_LEAVE_WINDOW | XCB_EVENT_MASK_POINTER_MOTION, colormap
             });
 
     ret->pixmap = xcb_generate_id(c);
@@ -1541,6 +1564,7 @@ main (int argc, char **argv)
     xcb_generic_event_t *ev;
     xcb_expose_event_t *expose_ev;
     xcb_button_press_event_t *press_ev;
+    xcb_motion_notify_event_t *hover_ev;
     char input[16384] = {0, };
     bool permanent = false;
     int geom_v[4] = { -1, -1, 0, 0 };
@@ -1671,6 +1695,20 @@ main (int argc, char **argv)
                             press_ev = (xcb_button_press_event_t *)ev;
                             {
                                 area_t *area = area_get(press_ev->event, press_ev->detail, press_ev->event_x);
+                                // Respond to the click
+                                if (area) {
+                                    (void)write(STDOUT_FILENO, area->cmd, strlen(area->cmd));
+                                    (void)write(STDOUT_FILENO, "\n", 1);
+                                }
+                            }
+                            break;
+                        case XCB_LEAVE_NOTIFY:
+                        case XCB_MOTION_NOTIFY:
+                            hover_ev = (xcb_motion_notify_event_t *)ev;
+                            {
+                                int ev_de = hover_ev->detail ? 7 : 6;
+                                //printf("ev %u %u %u\n", ev_de, ev->response_type, hover_ev->event_x);
+                                area_t *area = area_get(hover_ev->event, ev_de, hover_ev->event_x);
                                 // Respond to the click
                                 if (area) {
                                     (void)write(STDOUT_FILENO, area->cmd, strlen(area->cmd));
