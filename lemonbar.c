@@ -1706,8 +1706,15 @@ main (int argc, char **argv)
                         case XCB_MOTION_NOTIFY:
                             hover_ev = (xcb_motion_notify_event_t *)ev;
                             {
+                                static int last_x = 0;
+                                static int last_ev = 0;
                                 int ev_de = hover_ev->detail ? 7 : 6;
-                                //printf("ev %u %u %u\n", ev_de, ev->response_type, hover_ev->event_x);
+
+                                if (ev_de == last_ev && last_x - 1 <= hover_ev->event_x && hover_ev->event_x <= last_x + 1)
+                                    break;
+                                last_ev = ev_de;
+                                last_x = hover_ev->event_x;
+
                                 area_t *area = area_get(hover_ev->event, ev_de, hover_ev->event_x);
                                 // Respond to the click
                                 if (area) {
