@@ -117,6 +117,7 @@ static int offset_y_index = 0;
 static uint32_t attrs = 0;
 static bool dock = false;
 static bool topbar = true;
+static bool allow_hover = true;
 static int bw = -1, bh = -1, bx = 0, by = 0;
 static int bu = 1; // Underline height
 static rgba_t fgc, bgc, ugc;
@@ -1591,11 +1592,11 @@ main (int argc, char **argv)
     // Connect to the Xserver and initialize scr
     xconn();
 
-    while ((ch = getopt(argc, argv, "hg:O:btdf:a:pu:B:F:U:n:o:")) != -1) {
+    while ((ch = getopt(argc, argv, "hg:O:btdf:a:pu:B:F:U:Hn:o:")) != -1) {
         switch (ch) {
             case 'h':
                 printf ("lemonbar version %s patched with XFT support and other fancy stuff.\n", VERSION);
-                printf ("usage: %s [-h | -g | -O | -b | -t | -d | -f | -a | -p | -n | -u | -B | -F | -U | -o]\n"
+                printf ("usage: %s [-h | -g | -O | -b | -t | -d | -f | -a | -p | -n | -u | -B | -F | -U | -H | -o]\n"
                         "\t-h Show this help\n"
                         "\t-g Set the bar geometry {width}x{height}+{xoffset}+{yoffset}\n"
                         "\t-O Add randr output by name\n"
@@ -1610,6 +1611,7 @@ main (int argc, char **argv)
                         "\t-B Set background color in #AARRGGBB\n"
                         "\t-F Set foreground color in #AARRGGBB\n"
                         "\t-U Set underline color in #AARRGGBB\n"
+                        "\t-H Allow hover events\n"
                         "\t-o Add a vertical offset to the text, it can be negative\n", argv[0]);
                 exit (EXIT_SUCCESS);
             case 'g': (void)parse_geometry_string(optarg, geom_v); break;
@@ -1618,6 +1620,7 @@ main (int argc, char **argv)
             case 'n': wm_name = strdup(optarg); break;
             case 'b': topbar = false; break;
             case 't': topbar = true; break;
+            case 'H': allow_hover = true; break;
             case 'd': dock = true; break;
             case 'f': font_load(optarg); break;
             case 'u': bu = strtoul(optarg, NULL, 10); break;
@@ -1703,6 +1706,8 @@ main (int argc, char **argv)
                             break;
                         case XCB_LEAVE_NOTIFY:
                         case XCB_MOTION_NOTIFY:
+                            if (!allow_hover)
+                                break;
                             hover_ev = (xcb_motion_notify_event_t *)ev;
                             {
                                 static int last_x = 0;
