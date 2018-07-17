@@ -457,10 +457,9 @@ area_get (xcb_window_t win, const int btn, const int x)
 
         if (a->window == win && x >= a->begin && x < a->end) {
             if (a->button == btn && (a->button != 6 || !a->hovered)) {
-                if (!res) {
-                    a->hovered = true;
+                a->hovered = true;
+                if (!res)
                     res = a;
-                }
             } else if (btn != 7)
                 a->hovered = true;
         }
