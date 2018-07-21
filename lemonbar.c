@@ -442,13 +442,15 @@ set_attribute (const char modifier, const char attribute)
 area_get (xcb_window_t win, const int btn, const int x)
 {
     // Looping backwards ensures that we get the innermost area first
-    area_t* res = NULL;
     for (int i = area_stack.at - 1; i >= 0; i--) {
         area_t *a = &area_stack.area[i];
 
         if (a->window != win || x < a->begin || x >= a->end || btn == 7) {
-            if (a->hovered && a->button == 7 && !res)
-                res = a;
+            if (a->hovered && a->button == 7) {
+                a->hovered = false;
+                return a;
+            }
+
             a->hovered = false;
         }
     }
@@ -457,12 +459,13 @@ area_get (xcb_window_t win, const int btn, const int x)
         if (a->window == win && x >= a->begin && x < a->end) {
             if (a->button == btn && (a->button != 6 || !a->hovered)) {
                 a->hovered = true;
-                if (!res) res = a;
+                if (a->button == btn)
+                    return a;
             } else if (btn != 7)
                 a->hovered = true;
         }
     }
-    return res;
+    return NULL;
 }
 
     void
@@ -478,6 +481,7 @@ area_shift (xcb_window_t win, const int align, int delta)
         if (a->window == win && a->align == align && !a->active) {
             a->begin -= delta;
             a->end -= delta;
+            a->hovered = a->begin <= last_x && last_x < a->end;
         }
     }
 }
@@ -1337,11 +1341,11 @@ parse_output_string(char *str)
 xconn (void)
 {
     if ((dpy = XOpenDisplay(0)) == NULL) {
-        fprintf (stderr, "Couldnt open display\n");
+        fprintf (stderr, "Couldn't open display\n");
     }
 
     if ((c = XGetXCBConnection(dpy)) == NULL) {
-        fprintf (stderr, "Couldnt connect to X\n");
+        fprintf (stderr, "Couldn't connect to X\n");
         exit (EXIT_FAILURE);
     }
 
@@ -1425,7 +1429,7 @@ init (char *wm_name, char *wm_instance)
 
         // Check the geometry
         if (bx + bw > scr->width_in_pixels || by + bh > scr->height_in_pixels) {
-            fprintf(stderr, "The geometry specified doesn't fit the screen!\n");
+            fprintf(stderr, "The geometry specified doesn't fit the screen.\n");
             exit(EXIT_FAILURE);
         }
 
