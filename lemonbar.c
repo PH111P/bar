@@ -152,6 +152,8 @@ update_gc (void)
     }
 }
 
+/*
+ * TODO: Think about removing this bloat.
     void
 fill_gradient (xcb_drawable_t d, int x, int y, int width, int height, rgba_t start, rgba_t stop)
 {
@@ -182,6 +184,7 @@ fill_gradient (xcb_drawable_t d, int x, int y, int width, int height, rgba_t sta
 
     xcb_change_gc(c, gc[GC_DRAW], XCB_GC_FOREGROUND, (const uint32_t []){ fgc.v });
 }
+*/
 
     void
 fill_rect (xcb_drawable_t d, xcb_gcontext_t _gc, int x, int y, int width, int height)
