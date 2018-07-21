@@ -484,7 +484,6 @@ area_shift (xcb_window_t win, const int align, int delta)
         if (a->window == win && a->align == align && !a->active) {
             a->begin -= delta;
             a->end -= delta;
-            a->hovered = a->begin <= last_x && last_x < a->end;
         }
     }
 }
@@ -815,6 +814,12 @@ parse (char *text)
             area_shift(cur_mon->window, align, w);
         }
     }
+
+    for (int i = 0; i < area_stack.at; i++) {
+        area_t *a = &area_stack.area[i];
+        a->hovered = a->begin <= last_x && last_x < a->end;
+    }
+
     XftDrawDestroy (xft_draw);
 }
 
