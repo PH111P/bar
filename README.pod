@@ -2,7 +2,7 @@
 
 lemonbar - Featherweight lemon-scented bar
 
-=for HTML <a href="https://travis-ci.org/LemonBoy/bar"><img src="https://travis-ci.org/LemonBoy/bar.svg?branch=master"></a>
+=for html <a href="https://travis-ci.org/PH111P/bar"><img src="https://travis-ci.org/PH111P/bar.svg?branch=xft-port"></a>
 
 =head1 SYNOPSIS
 
