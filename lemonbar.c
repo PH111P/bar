@@ -135,6 +135,8 @@ static char    xft_width[MAX_WIDTHS];
 static int num_outputs = 0;
 static char **output_names = NULL;
 
+//last hover x position
+static int last_x = -1;
     void
 update_gc (void)
 {
@@ -444,23 +446,18 @@ area_get (xcb_window_t win, const int btn, const int x)
     for (int i = area_stack.at - 1; i >= 0; i--) {
         area_t *a = &area_stack.area[i];
 
-        if (a->window != win || x < a->begin || x > a->end || btn == 7) {
-            if (a->hovered && a->button == 7) {
-                a->hovered = false;
-                if (!res)
-                    res = a;
-            }
+        if (a->window != win || x < a->begin || x >= a->end || btn == 7) {
+            if (a->hovered && a->button == 7 && !res)
+                res = a;
             a->hovered = false;
         }
     }
     for (int i = area_stack.at - 1; i >= 0; i--) {
         area_t *a = &area_stack.area[i];
-
         if (a->window == win && x >= a->begin && x < a->end) {
             if (a->button == btn && (a->button != 6 || !a->hovered)) {
                 a->hovered = true;
-                if (!res)
-                    res = a;
+                if (!res) res = a;
             } else if (btn != 7)
                 a->hovered = true;
         }
@@ -523,9 +520,8 @@ area_add (char *str, const char *optend, char **end, monitor_t *mon, const int x
                 a->end = mon->width;
                 break;
         }
-
         a->active = false;
-        a->hovered = false;
+        a->hovered = a->begin <= last_x && last_x < a->end;
         return true;
     }
 
@@ -574,7 +570,6 @@ area_add (char *str, const char *optend, char **end, monitor_t *mon, const int x
     a->button = button;
 
     *end = trail + 1;
-
     return true;
 }
 
@@ -747,73 +742,73 @@ parse (char *text)
                               }
 
                               // In case of error keep parsing after the closing }
-                default:
+                    default:
                               p = block_end;
+                }
             }
+            // Eat the trailing }
+            p++;
+        } else { // utf-8 -> ucs-2
+            // Escaped % symbol (%%{}), eat the first one
+            if (p[0] == '%' && p[1] == '%' && p[2] == '{' && p[3] == '}') {
+                p += 3;
+                p[0] = '%';
+            }
+
+            uint8_t *utf = (uint8_t *)p;
+            uint16_t ucs;
+
+            // ASCII
+            if (utf[0] < 0x80) {
+                ucs = utf[0];
+                p  += 1;
+            }
+            // Two byte utf8 sequence
+            else if ((utf[0] & 0xe0) == 0xc0) {
+                ucs = (utf[0] & 0x1f) << 6 | (utf[1] & 0x3f);
+                p += 2;
+            }
+            // Three byte utf8 sequence
+            else if ((utf[0] & 0xf0) == 0xe0) {
+                ucs = (utf[0] & 0xf) << 12 | (utf[1] & 0x3f) << 6 | (utf[2] & 0x3f);
+                p += 3;
+            }
+            // Four byte utf8 sequence
+            else if ((utf[0] & 0xf8) == 0xf0) {
+                ucs = 0xfffd;
+                p += 4;
+            }
+            // Five byte utf8 sequence
+            else if ((utf[0] & 0xfc) == 0xf8) {
+                ucs = 0xfffd;
+                p += 5;
+            }
+            // Six byte utf8 sequence
+            else if ((utf[0] & 0xfe) == 0xfc) {
+                ucs = 0xfffd;
+                p += 6;
+            }
+            // Not a valid utf-8 sequence
+            else {
+                ucs = utf[0];
+                p += 1;
+            }
+
+            cur_font = select_drawable_font(ucs);
+            if (!cur_font)
+                continue;
+
+            if(cur_font->ptr)
+                xcb_change_gc(c, gc[GC_DRAW] , XCB_GC_FONT, (const uint32_t []) {
+                        cur_font->ptr
+                        });
+            int w = draw_char(cur_mon, cur_font, pos_x, align, ucs);
+
+            pos_x += w;
+            area_shift(cur_mon->window, align, w);
         }
-        // Eat the trailing }
-        p++;
-} else { // utf-8 -> ucs-2
-    // Escaped % symbol (%%{}), eat the first one
-    if (p[0] == '%' && p[1] == '%' && p[2] == '{' && p[3] == '}') {
-        p += 3;
-        p[0] = '%';
     }
-
-    uint8_t *utf = (uint8_t *)p;
-    uint16_t ucs;
-
-    // ASCII
-    if (utf[0] < 0x80) {
-        ucs = utf[0];
-        p  += 1;
-    }
-    // Two byte utf8 sequence
-    else if ((utf[0] & 0xe0) == 0xc0) {
-        ucs = (utf[0] & 0x1f) << 6 | (utf[1] & 0x3f);
-        p += 2;
-    }
-    // Three byte utf8 sequence
-    else if ((utf[0] & 0xf0) == 0xe0) {
-        ucs = (utf[0] & 0xf) << 12 | (utf[1] & 0x3f) << 6 | (utf[2] & 0x3f);
-        p += 3;
-    }
-    // Four byte utf8 sequence
-    else if ((utf[0] & 0xf8) == 0xf0) {
-        ucs = 0xfffd;
-        p += 4;
-    }
-    // Five byte utf8 sequence
-    else if ((utf[0] & 0xfc) == 0xf8) {
-        ucs = 0xfffd;
-        p += 5;
-    }
-    // Six byte utf8 sequence
-    else if ((utf[0] & 0xfe) == 0xfc) {
-        ucs = 0xfffd;
-        p += 6;
-    }
-    // Not a valid utf-8 sequence
-    else {
-        ucs = utf[0];
-        p += 1;
-    }
-
-    cur_font = select_drawable_font(ucs);
-    if (!cur_font)
-        continue;
-
-    if(cur_font->ptr)
-        xcb_change_gc(c, gc[GC_DRAW] , XCB_GC_FONT, (const uint32_t []) {
-                cur_font->ptr
-                });
-    int w = draw_char(cur_mon, cur_font, pos_x, align, ucs);
-
-    pos_x += w;
-    area_shift(cur_mon->window, align, w);
-}
-}
-XftDrawDestroy (xft_draw);
+    XftDrawDestroy (xft_draw);
 }
 
     void
@@ -1708,16 +1703,17 @@ main (int argc, char **argv)
                         case XCB_MOTION_NOTIFY:
                             if (!allow_hover)
                                 break;
-                            hover_ev = (xcb_motion_notify_event_t *)ev;
                             {
-                                static int last_x = 0;
+                                hover_ev = (xcb_motion_notify_event_t *)ev;
                                 static int last_ev = 0;
                                 int ev_de = hover_ev->detail ? 7 : 6;
 
-                                if (ev_de == last_ev && last_x - 1 <= hover_ev->event_x && hover_ev->event_x <= last_x + 1)
+                                if (ev_de == last_ev && last_x - 1 <= hover_ev->event_x
+                                        && hover_ev->event_x <= last_x + 1)
                                     break;
                                 last_ev = ev_de;
-                                last_x = hover_ev->event_x;
+                                last_x = ((ev->response_type & 0x7F) != XCB_LEAVE_NOTIFY) ?
+                                    hover_ev->event_x : -1;
 
                                 area_t *area = area_get(hover_ev->event, ev_de, hover_ev->event_x);
                                 // Respond to the click
