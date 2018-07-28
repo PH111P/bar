@@ -324,9 +324,9 @@ draw_char (monitor_t *mon, font_t *cur_font, int x, int align, uint16_t ch)
 
     x = shift(mon, x, align, ch_width);
 
-    int y = bh / 2 + cur_font->height / 2- cur_font->descent + offsets_y[offset_y_index];
+    int y = bh - cur_font->descent + offsets_y[offset_y_index];
     if (cur_font->xft_ft) {
-        XftDrawString16 (xft_draw, &sel_fg, cur_font->xft_ft, x,y, &ch, 1);
+        XftDrawString16 (xft_draw, &sel_fg, cur_font->xft_ft, x, y, &ch, 1);
     } else {
         /* xcb accepts string in UCS-2 BE, so swap */
         ch = (ch >> 8) | (ch << 8);
