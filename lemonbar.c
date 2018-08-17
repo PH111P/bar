@@ -14,9 +14,6 @@
 #include <errno.h>
 #include <xcb/xcb.h>
 #include <xcb/xcbext.h>
-#if WITH_XINERAMA
-#include <xcb/xinerama.h>
-#endif
 #include <xcb/randr.h>
 
 #include <X11/Xft/Xft.h>
@@ -75,11 +72,6 @@ typedef struct area_stack_t {
     area_t *area;
 } area_stack_t;
 
-enum {
-    ATTR_OVERL = (1<<0),
-    ATTR_UNDERL = (1<<1),
-};
-
 enum { ALIGN_L = 0,
     ALIGN_C,
     ALIGN_R
@@ -114,14 +106,12 @@ static int offsets_y[MAX_FONT_COUNT];
 static int offset_y_count = 0;
 static int offset_y_index = 0;
 
-static uint32_t attrs = 0;
 static bool dock = false;
 static bool topbar = true;
 static bool allow_hover = true;
 static int bw = -1, bh = -1, bx = 0, by = 0;
-static int bu = 1; // Underline height
-static rgba_t fgc, bgc, ugc;
-static rgba_t dfgc, dbgc, dugc;
+static rgba_t fgc, bgc;
+static rgba_t dfgc, dbgc;
 static area_stack_t area_stack;
 
 static XftColor sel_fg;
@@ -142,7 +132,6 @@ update_gc (void)
 {
     xcb_change_gc(c, gc[GC_DRAW], XCB_GC_FOREGROUND, (const uint32_t []){ fgc.v });
     xcb_change_gc(c, gc[GC_CLEAR], XCB_GC_FOREGROUND, (const uint32_t []){ bgc.v });
-    xcb_change_gc(c, gc[GC_ATTR], XCB_GC_FOREGROUND, (const uint32_t []){ ugc.v });
     XftColorFree(dpy, visual_ptr, colormap , &sel_fg);
     char color[] = "#ffffff";
     uint32_t nfgc = fgc.v & 0x00ffffff;
@@ -268,7 +257,7 @@ int xft_char_width (uint16_t ch, font_t *cur_font)
 }
 
     int
-shift (monitor_t *mon, int x, int align, int ch_width)
+draw_shift (monitor_t *mon, int x, int align, int ch_width)
 {
     switch (align) {
         case ALIGN_C:
@@ -292,23 +281,6 @@ shift (monitor_t *mon, int x, int align, int ch_width)
     return x;
 }
 
-    void
-draw_lines (monitor_t *mon, int x, int w)
-{
-    /* We can render both at the same time */
-    if (attrs & ATTR_OVERL)
-        fill_rect(mon->pixmap, gc[GC_ATTR], x, 0, w, bu);
-    if (attrs & ATTR_UNDERL)
-        fill_rect(mon->pixmap, gc[GC_ATTR], x, bh - bu, w, bu);
-}
-
-    void
-draw_shift (monitor_t *mon, int x, int align, int w)
-{
-    x = shift(mon, x, align, w);
-    draw_lines(mon, x, w);
-}
-
     int
 draw_char (monitor_t *mon, font_t *cur_font, int x, int align, uint16_t ch)
 {
@@ -322,7 +294,7 @@ draw_char (monitor_t *mon, font_t *cur_font, int x, int align, uint16_t ch)
             cur_font->width;
     }
 
-    x = shift(mon, x, align, ch_width);
+    x = draw_shift(mon, x, align, ch_width);
 
     int y = bh - cur_font->descent + offsets_y[offset_y_index];
     if (cur_font->xft_ft) {
@@ -336,8 +308,6 @@ draw_char (monitor_t *mon, font_t *cur_font, int x, int align, uint16_t ch)
                 x, y,
                 1, &ch);
     }
-
-    draw_lines(mon, x, ch_width);
 
     return ch_width;
 }
@@ -416,30 +386,6 @@ parse_color (const char *str, char **end, const rgba_t def)
 
     return (rgba_t)0U;
 }
-
-    void
-set_attribute (const char modifier, const char attribute)
-{
-    int pos = indexof(attribute, "ou");
-
-    if (pos < 0) {
-        fprintf(stderr, "Invalid attribute \"%c\" found\n", attribute);
-        return;
-    }
-
-    switch (modifier) {
-        case '+':
-            attrs |= (1u<<pos);
-            break;
-        case '-':
-            attrs &=~(1u<<pos);
-            break;
-        case '!':
-            attrs ^= (1u<<pos);
-            break;
-    }
-}
-
 
     area_t *
 area_get (xcb_window_t win, const int btn, const int x)
@@ -627,7 +573,7 @@ parse (char *text)
     font_t *cur_font;
     monitor_t *cur_mon;
     int pos_x, align, button;
-    char *p = text, *block_end, *ep;
+    char *p = text, *block_end;
     rgba_t tmp;
 
     pos_x = 0;
@@ -657,10 +603,6 @@ parse (char *text)
                     p++;
 
                 switch (*p++) {
-                    case '+': set_attribute('+', *p++); break;
-                    case '-': set_attribute('-', *p++); break;
-                    case '!': set_attribute('!', *p++); break;
-
                     case 'R':
                               tmp = fgc;
                               fgc = bgc;
@@ -683,7 +625,6 @@ parse (char *text)
 
                     case 'B': bgc = parse_color(p, &p, dbgc); update_gc(); break;
                     case 'F': fgc = parse_color(p, &p, dfgc); update_gc(); break;
-                    case 'U': ugc = parse_color(p, &p, dugc); update_gc(); break;
 
                     case 'S':
                               if (*p == '+' && cur_mon->next)
@@ -728,24 +669,6 @@ parse (char *text)
                               pos_x += w;
                               area_shift(cur_mon->window, align, w);
                               break;
-
-                    case 'T':
-                              if (*p == '-') { //Reset to automatic font selection
-                                  font_index = -1;
-                                  p++;
-                                  break;
-                              } else if (isdigit(*p)) {
-                                  font_index = (int)strtoul(p, &ep, 10);
-                                  // User-specified 'font_index' ∊ (0,font_count]
-                                  // Otherwise just fallback to the automatic font selection
-                                  if (!font_index || font_index > font_count)
-                                      font_index = -1;
-                                  p = ep;
-                                  break;
-                              } else {
-                                  fprintf(stderr, "Invalid font slot \"%c\"\n", *p++); //Swallow the token
-                                  break;
-                              }
 
                               // In case of error keep parsing after the closing }
                     default:
@@ -1047,7 +970,7 @@ monitor_create_chain (monitor_t *mons, const int num)
 
     // Use the first font height as all the font heights have been set to the biggest of the set
     if (bh < 0 || bh > height)
-        bh = font_list[0]->height + bu + 2;
+        bh = font_list[0]->height + 2;
 
     // Check the geometry
     if (bx + bw > width || by + bh > height) {
@@ -1223,43 +1146,6 @@ get_randr_monitors (void)
     monitor_create_chain(m, valid);
 }
 
-#ifdef WITH_XINERAMA
-    void
-get_xinerama_monitors (void)
-{
-    xcb_xinerama_query_screens_reply_t *xqs_reply;
-    xcb_xinerama_screen_info_iterator_t iter;
-    int screens;
-
-    if (num_outputs) {
-        fprintf(stderr, "Using output names with Xinerama is not yet supported\n");
-        return;
-    }
-
-    xqs_reply = xcb_xinerama_query_screens_reply(c,
-            xcb_xinerama_query_screens_unchecked(c), NULL);
-
-    iter = xcb_xinerama_query_screens_screen_info_iterator(xqs_reply);
-    screens = iter.rem;
-
-    monitor_t mons[screens];
-
-    // Fetch all the screens first
-    for (int i = 0; iter.rem; i++) {
-        mons[i].name = NULL;
-        mons[i].x = iter.data->x_org;
-        mons[i].y = iter.data->y_org;
-        mons[i].width = iter.data->width;
-        mons[i].height = iter.data->height;
-        xcb_xinerama_screen_info_next(&iter);
-    }
-
-    free(xqs_reply);
-
-    monitor_create_chain(mons, screens);
-}
-#endif
-
     xcb_visualid_t
 get_visual (void)
 {
@@ -1405,22 +1291,6 @@ init (char *wm_name, char *wm_instance)
     if (qe_reply && qe_reply->present) {
         get_randr_monitors();
     }
-#if WITH_XINERAMA
-    else {
-        qe_reply = xcb_get_extension_data(c, &xcb_xinerama_id);
-
-        // Check if Xinerama extension is present and active
-        if (qe_reply && qe_reply->present) {
-            xcb_xinerama_is_active_reply_t *xia_reply;
-            xia_reply = xcb_xinerama_is_active_reply(c, xcb_xinerama_is_active(c), NULL);
-
-            if (xia_reply && xia_reply->state)
-                get_xinerama_monitors();
-
-            free(xia_reply);
-        }
-    }
-#endif
 
     if (!monhead) {
         if (num_outputs) {
@@ -1433,7 +1303,7 @@ init (char *wm_name, char *wm_instance)
 
         // Adjust the height
         if (bh < 0 || bh > scr->height_in_pixels)
-            bh = maxh + bu + 2;
+            bh = maxh + 2;
 
         // Check the geometry
         if (bx + bw > scr->width_in_pixels || by + bh > scr->height_in_pixels) {
@@ -1457,9 +1327,6 @@ init (char *wm_name, char *wm_instance)
 
     gc[GC_CLEAR] = xcb_generate_id(c);
     xcb_create_gc(c, gc[GC_CLEAR], monhead->pixmap, XCB_GC_FOREGROUND, (const uint32_t []){ bgc.v });
-
-    gc[GC_ATTR] = xcb_generate_id(c);
-    xcb_create_gc(c, gc[GC_ATTR], monhead->pixmap, XCB_GC_FOREGROUND, (const uint32_t []){ ugc.v });
 
     // Make the bar visible and clear the pixmap
     for (monitor_t *mon = monhead; mon; mon = mon->next) {
@@ -1532,8 +1399,6 @@ cleanup (void)
         xcb_free_gc(c, gc[GC_DRAW]);
     if (gc[GC_CLEAR])
         xcb_free_gc(c, gc[GC_CLEAR]);
-    if (gc[GC_ATTR])
-        xcb_free_gc(c, gc[GC_ATTR]);
     if (c)
         xcb_disconnect(c);
 }
@@ -1588,8 +1453,6 @@ main (int argc, char **argv)
     dbgc = bgc = (rgba_t)0x00000000U;
     dfgc = fgc = (rgba_t)0xffffffffU;
 
-    dugc = ugc = fgc;
-
     // A safe default
     areas = 10;
     wm_name = NULL;
@@ -1630,11 +1493,9 @@ main (int argc, char **argv)
             case 'H': allow_hover = true; break;
             case 'd': dock = true; break;
             case 'f': font_load(optarg); break;
-            case 'u': bu = strtoul(optarg, NULL, 10); break;
             case 'o': add_y_offset(strtol(optarg, NULL, 10)); break;
             case 'B': dbgc = bgc = parse_color(optarg, NULL, (rgba_t)0x00000000U); break;
             case 'F': dfgc = fgc = parse_color(optarg, NULL, (rgba_t)0xffffffffU); break;
-            case 'U': dugc = ugc = parse_color(optarg, NULL, fgc); break;
             case 'a': areas = strtoul(optarg, NULL, 10); break;
         }
     }
